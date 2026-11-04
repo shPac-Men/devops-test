@@ -1,0 +1,789 @@
+{
+  "dashboard": {
+    "uid": "safeboard-health",
+    "id": null,
+    "title": "Safeboard · здоровье контура",
+    "description": "Ресурсы Linux-хоста и контейнеров, состояние MariaDB и HTTP-доступность Uptime Kuma. HTTP-проба не проверяет внутренние мониторы Kuma.",
+    "tags": [
+      "safeboard"
+    ],
+    "schemaVersion": 41,
+    "version": 0,
+    "editable": true,
+    "timezone": "browser",
+    "refresh": "15s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "MariaDB",
+        "type": "stat",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 8,
+          "h": 4
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "color": {
+              "mode": "thresholds"
+            },
+            "noValue": "Нет данных",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            },
+            "mappings": [
+              {
+                "type": "value",
+                "options": {
+                  "0": {
+                    "text": "Проблема",
+                    "color": "red"
+                  },
+                  "1": {
+                    "text": "OK",
+                    "color": "green"
+                  }
+                }
+              }
+            ]
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "(min(mysql_up{job=\"mariadb\"}) or vector(0)) * (min(up{job=\"mariadb\"}) or vector(0))",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{instance}}",
+            "range": false,
+            "instant": true
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 2,
+        "title": "Uptime Kuma · HTTP",
+        "type": "stat",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 8,
+          "y": 0,
+          "w": 8,
+          "h": 4
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "color": {
+              "mode": "thresholds"
+            },
+            "noValue": "Нет данных",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            },
+            "mappings": [
+              {
+                "type": "value",
+                "options": {
+                  "0": {
+                    "text": "Проблема",
+                    "color": "red"
+                  },
+                  "1": {
+                    "text": "OK",
+                    "color": "green"
+                  }
+                }
+              }
+            ]
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "(min(probe_success{job=\"kuma-http\"}) or vector(0)) * (min(up{job=\"kuma-http\"}) or vector(0))",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{instance}}",
+            "range": false,
+            "instant": true
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 3,
+        "title": "Сбор метрик · 6 целей",
+        "type": "stat",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 16,
+          "y": 0,
+          "w": 8,
+          "h": 4
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "color": {
+              "mode": "thresholds"
+            },
+            "noValue": "Нет данных",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            },
+            "mappings": [
+              {
+                "type": "value",
+                "options": {
+                  "0": {
+                    "text": "Проблема",
+                    "color": "red"
+                  },
+                  "1": {
+                    "text": "OK",
+                    "color": "green"
+                  }
+                }
+              }
+            ]
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "count(up == 1) == bool 6",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{instance}}",
+            "range": false,
+            "instant": true
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 4,
+        "title": "CPU хоста",
+        "type": "stat",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "color": {
+              "mode": "palette-classic"
+            },
+            "noValue": "Нет данных"
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{job=\"node\",mode=\"idle\"}[$__rate_interval])))",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{instance}}",
+            "range": false,
+            "instant": true
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "value",
+          "graphMode": "none",
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 5,
+        "title": "RAM хоста",
+        "type": "stat",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "color": {
+              "mode": "palette-classic"
+            },
+            "noValue": "Нет данных"
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"node\"} / node_memory_MemTotal_bytes{job=\"node\"})",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{instance}}",
+            "range": false,
+            "instant": true
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "value",
+          "graphMode": "none",
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 6,
+        "title": "Корневая ФС · занято",
+        "type": "stat",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 4,
+          "w": 6,
+          "h": 4
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "color": {
+              "mode": "palette-classic"
+            },
+            "noValue": "Нет данных"
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "100 * (1 - node_filesystem_avail_bytes{job=\"node\",mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"node\",mountpoint=\"/\"})",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{instance}}",
+            "range": false,
+            "instant": true
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "value",
+          "graphMode": "none",
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 7,
+        "title": "Kuma · длительность HTTP-пробы",
+        "type": "stat",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 18,
+          "y": 4,
+          "w": 6,
+          "h": 4
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 2,
+            "color": {
+              "mode": "palette-classic"
+            },
+            "noValue": "Нет данных"
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "probe_duration_seconds{job=\"kuma-http\"}",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{instance}}",
+            "range": false,
+            "instant": true
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "value",
+          "graphMode": "none",
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 8,
+        "title": "CPU контейнеров приложения",
+        "type": "timeseries",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 8,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "cores",
+            "decimals": 2,
+            "color": {
+              "mode": "palette-classic"
+            },
+            "noValue": "Нет данных"
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "rate(container_cpu_usage_seconds_total{job=\"cadvisor\",container_label_com_docker_compose_project=\"safeboard-app\"}[$__rate_interval])",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{container_label_com_docker_compose_service}}",
+            "range": true,
+            "instant": false
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "RAM контейнеров приложения",
+        "type": "timeseries",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 8,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes",
+            "decimals": 2,
+            "color": {
+              "mode": "palette-classic"
+            },
+            "noValue": "Нет данных"
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "container_memory_working_set_bytes{job=\"cadvisor\",container_label_com_docker_compose_project=\"safeboard-app\"}",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{container_label_com_docker_compose_service}}",
+            "range": true,
+            "instant": false
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "CPU хоста · история",
+        "type": "timeseries",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 16,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "color": {
+              "mode": "palette-classic"
+            },
+            "noValue": "Нет данных"
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{job=\"node\",mode=\"idle\"}[$__rate_interval])))",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "CPU",
+            "range": true,
+            "instant": false
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "RAM хоста · история",
+        "type": "timeseries",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 16,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "color": {
+              "mode": "palette-classic"
+            },
+            "noValue": "Нет данных"
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"node\"} / node_memory_MemTotal_bytes{job=\"node\"})",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "RAM",
+            "range": true,
+            "instant": false
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        }
+      },
+      {
+        "id": 12,
+        "title": "MariaDB · подключения",
+        "type": "timeseries",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 24,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 2,
+            "color": {
+              "mode": "palette-classic"
+            },
+            "noValue": "Нет данных"
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "mysql_global_status_threads_connected{job=\"mariadb\"}",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "Соединения",
+            "range": true,
+            "instant": false
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        }
+      },
+      {
+        "id": 13,
+        "title": "Kuma · длительность HTTP-пробы · история",
+        "type": "timeseries",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 24,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 2,
+            "color": {
+              "mode": "palette-classic"
+            },
+            "noValue": "Нет данных"
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "probe_duration_seconds{job=\"kuma-http\"}",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "HTTP GET с редиректами",
+            "range": true,
+            "instant": false
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        }
+      }
+    ],
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": []
+    }
+  },
+  "overwrite": true,
+  "message": "Apply repository configuration via Dagger"
+}
