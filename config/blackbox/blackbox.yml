@@ -1,7 +1,8 @@
 modules:
   http_2xx:
     prober: http
-    timeout: 2s
+    timeout: 5s
     http:
-      preferred_ip_protocol: ip4
+      method: GET
       follow_redirects: true
+      preferred_ip_protocol: ip4

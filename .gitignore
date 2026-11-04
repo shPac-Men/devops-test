@@ -1,12 +1,11 @@
+.env
 .secrets/
 .tools/
 dist/
-build/
-.env
-*.docx
-.~lock.*
-devops-test/
-.dagger/internal/
-.dagger/querybuilder/
-.dagger/dagger.gen.go
 __pycache__/
+.~lock.*#
+
+# Local artifacts retained from the previous working directory.
+devops-test/
+.dagger/dagger.gen.go
+.dagger/internal/

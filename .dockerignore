@@ -1,8 +1,0 @@
-.git
-.secrets
-.tools
-dist
-build
-devops-test
-*.docx
-.~lock.*

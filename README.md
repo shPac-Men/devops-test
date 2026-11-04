@@ -1,146 +1,150 @@
-# Локальный мониторинг Uptime Kuma
+# Локальный контур Uptime Kuma
 
-Тестовое Intern DevOps Safeboard 2026: Uptime Kuma с внешней MariaDB и отдельный слой Prometheus/Grafana. Dagger на Go управляет хостовым Docker через Unix socket. Реализованы обязательные команды, общий запуск и два сценария Chaos Testing. Galera — отдельный следующий этап, описанный в [docs/GALERA.md](docs/GALERA.md).
+Слой приложения находится в `compose.app.yaml`, слой мониторинга — в `compose.monitoring.yaml`. Управление через Dagger и настройка дашборда Grafana остаются на следующих этапах.
 
-## Требования и подготовка
+## Требования и совместимость
 
-- Linux с Docker Engine либо Docker Desktop; Windows — WSL2 с Docker integration. Bash и Python 3 нужны для скриптов.
-- Docker Compose v2.39.2+, **Dagger CLI 0.21.11**. Локальный Go нужен только для разработки; сборка выполняется внутри Dagger.
-- Ориентир: 4 CPU, 8 ГБ RAM, 15 ГБ свободного диска с учётом Dagger и образов. Первый запуск требует доступа к Docker Hub, GHCR, registry.dagger.io.
-- `/var/run/docker.sock` должен вести к тому же демону, который виден через `docker info`. Нестандартный rootless-сокет внутри контроллера не поддерживается.
-- Свободные локальные порты 3000, 3001, 9090. Выполняйте операции последовательно из корня проекта.
+Нужны Docker Engine или Docker Desktop, Docker Compose v2 с поддержкой `up --wait` и OpenSSL для создания паролей. Команды ниже выполняются из корня проекта в Bash, в том числе в WSL.
 
-Установите CLI из [официального релиза Dagger 0.21.11](https://github.com/dagger/dagger/releases/tag/v0.21.11): выберите архив своей ОС/архитектуры, проверьте `checksums.txt`, распакуйте бинарник в PATH либо `.tools/dagger`. Версия engine закреплена в `dagger.json`.
+- Uptime Kuma закреплена на `2.5.9`. [Официальная документация](https://github.com/louislam/uptime-kuma/wiki/Environment-Variables) описывает поддержку внешней MariaDB с версии 2.0.0 и переменные `UPTIME_KUMA_DB_*`, включая `UPTIME_KUMA_DB_PASSWORD_FILE`.
+- Выбрана MariaDB `11.4.13` из ветки 11.4; версия указана в [официальном списке релизов](https://mariadb.org/mariadb/all-releases/). В просмотренной документации Kuma нет матрицы сертифицированных пар версий; фактическая совместимость проверяется запуском и миграциями схемы.
+- Тег Kuma `latest` не используем: согласно [документации тегов](https://github.com/louislam/uptime-kuma/wiki/Docker-Tags), он продолжает указывать на v1.
 
-```bash
-docker info
-docker compose version
-dagger version  # либо .tools/dagger version
-python3 scripts/init-secrets.py
-```
+## Подготовка паролей
 
-Скрипт создаёт четыре случайных пароля по 256 бит в `.secrets/` и сохраняет существующие файлы. Не удаляйте их после первого запуска: пароли уже используются сохранёнными БД. Ротация не автоматизирована; другие значения будут отклонены.
-
-При необходимости скопируйте `.env.example` в `.env` и измените опубликованные порты. `DB_HOST` — адрес БД внутри Docker; для базовой версии оставьте `mariadb`. В `.env` храните только настройки, секреты находятся отдельно.
-
-## Запуск
+Создайте два разных пароля. Существующие файлы следующие команды не перезаписывают:
 
 ```bash
-bash scripts/dagger.sh deploy-all
+mkdir -p .secrets/app
+chmod 700 .secrets/app
+(umask 077; test -f .secrets/app/kuma_db_password || openssl rand -hex 32 > .secrets/app/kuma_db_password)
+(umask 077; test -f .secrets/app/mariadb_root_password || openssl rand -hex 32 > .secrets/app/mariadb_root_password)
 ```
 
-Обёртка проверяет версию CLI и передаёт сокет/секреты в Dagger. Эквивалентный полный вызов:
+Пароли передаются через Compose secrets и не хранятся в YAML. Локальные secrets являются файлами на хосте, а не зашифрованным хранилищем. Kuma также записывает параметры подключения в `/app/data/db-config.json`, поэтому её том тоже содержит чувствительные данные. Каталог `.secrets` исключён из Git; для новой установки пароли создаются заново.
+
+## Запуск и проверка
 
 ```bash
-dagger call \
-  --docker-socket=/var/run/docker.sock \
-  --root-password=file://.secrets/root-password \
-  --kuma-password=file://.secrets/kuma-password \
-  --exporter-password=file://.secrets/exporter-password \
-  --grafana-password=file://.secrets/grafana-password \
-  deploy-all
-```
-
-Общие аргументы конструктора нужны всем командам. При нестандартных портах передайте также `--kuma-port`, `--grafana-port`, `--prometheus-port` перед именем функции. Имена `dagger call deploy-app` и аналогичные обозначают функции; доступ к хосту требует явных аргументов выше.
-
-Раздельный запуск:
-
-```bash
-bash scripts/dagger.sh deploy-app
-bash scripts/dagger.sh deploy-monitoring
-bash scripts/dagger.sh configure-grafana
-bash scripts/dagger.sh verify
-```
-
-`deploy-monitoring` можно запустить первым: отсутствие приложения отобразится как ошибка. `deploy-all` запускает оба слоя, настраивает Grafana и проверяет контейнеры, семь scrape targets, ресурсы и общий статус через Grafana API. Повторный вызов сохраняет данные и обновляет объекты Grafana с теми же UID. Загрузка образов может занять несколько минут; тайм-аут готовности сервисов — 180 секунд.
-
-| Интерфейс | Адрес по умолчанию | Вход |
-|---|---|---|
-| Uptime Kuma | [localhost:3001](http://localhost:3001) | Создать администратора при первом входе |
-| Grafana | [localhost:3000](http://localhost:3000) | `admin`, пароль из `.secrets/grafana-password` |
-| Дашборд | [Safeboard](http://localhost:3000/d/safeboard-health) | Учётная запись Grafana |
-| Prometheus | [localhost:9090](http://localhost:9090) | Только loopback, без аутентификации |
-
-Прочитать пароль Grafana локально: `cat .secrets/grafana-password`. Не прикладывайте его к отчётам.
-
-В Kuma создайте администратора и добавьте HTTP-монитор `http://grafana:3000/api/health` и TCP-монитор `mariadb:3306`, например с интервалом 20 секунд. Подключение самой Kuma к MariaDB уже настроено. Kuma проверяет независимый blackbox_exporter, поэтому отказ приложения не останавливает наблюдение за ним.
-
-## Архитектура
-
-```text
-Dagger Go -> Docker CLI + forwarded Unix socket
-                  |
-                  +-> temporary controller in network safeboard
-                         |-- docker cp -> config/secret volumes
-                         |-- Compose safeboard-app: MariaDB <- Kuma
-                         |-- Compose safeboard-monitoring:
-                         |      exporters -> Prometheus <- Grafana
-                         +-- Grafana API and acceptance checks
-```
-
-Контроллер из `cmd/platform` собирается без CGO и запускается во временном контейнере `docker:28.5.1-cli`. После команды контейнер удаляется. Конфигурации передаются через `docker cp`: пути внутри Dagger не используются как bind mounts хостового демона. Функции помечены `cache="never"`; уникальный RUN_ID предотвращает кэширование слоя с внешними эффектами.
-
-Именованные volumes `safeboard-app_mariadb-data`, `safeboard-app_kuma-data`, `safeboard-monitoring_prometheus-data`, `safeboard-monitoring_grafana-data` сохраняются при пересоздании контейнеров. Prometheus хранит семь дней истории. Секреты разделены по volumes: Kuma не получает root-пароль. MariaDB читает секрет экспортёра для первичной инициализации. Grafana конфигурируется через API, JSON дашборда хранится в репозитории.
-
-cAdvisor собирает ресурсы контейнеров; node_exporter — ресурсы **хоста Docker**. На Docker Desktop это Linux VM. cAdvisor использует privileged и системные read-only mounts. Контроллер и cAdvisor требуют доверенного локального Docker. БД и экспортёры не публикуют порты.
-
-Сбор метрик и health rules — каждые 5 секунд. Проверяются HTTP probes, `mysql_up`, `up` и свежесть данных. Отсутствующая серия считается отказом; при недоступном Prometheus Grafana показывает «Нет данных». Статусные панели используют instant queries. Стенд восстанавливается после сбоя контейнера, но не обеспечивает доступность при потере единственного хоста или Docker-демона.
-
-## Chaos Testing
-
-```bash
-bash scripts/dagger.sh chaos-test --target=kuma --mode=both
-bash scripts/dagger.sh chaos-test --target=mariadb --mode=both
-```
-
-`--target`: `kuma`/`mariadb`; `--mode`: `stop`/`crash`/`both`. Перед тестом все системы должны быть здоровы.
-
-1. **stop:** выполняет `docker stop`, ждёт статуса 0 через datasource Grafana, записывает annotation, держит отказ ещё 15 секунд. Затем выполняет `docker start` и ждёт статуса 1.
-2. **crash:** после минимум 10 секунд uptime отправляет SIGKILL init-процессу контейнера через временный контейнер с `--pid=host --cap-drop=ALL --cap-add=KILL`. PID берётся из Docker inspect и проверяется. Это имитирует сбой процесса без kill API. Тест проверяет увеличение `RestartCount`, готовность сервиса и статус 1. Быстрый сбой может попасть между scrape-интервалами; автоматический рестарт подтверждается счётчиком, длительный видимый отказ — первым сценарием.
-
-Откройте дашборд с обновлением 5 секунд: история и annotations показывают события теста. При ошибке или штатной отмене контроллер восстанавливает сервис в отдельном ограниченном контексте. При принудительном завершении Docker/машины повторите `deploy-all`.
-
-После ручной остановки Docker подавляет restart-policy до явного запуска контейнера или соответствующего перезапуска демона. В проверенном Docker 29.8.1 это относится и к `docker kill --signal=SIGKILL`: контейнер завершался с кодом 137 и RestartCount=0. Поэтому crash использует прямой сигнал процессу, а stop/start остаётся отдельной проверкой длительного отказа. [Документация Docker](https://docs.docker.com/engine/containers/start-containers-automatically/).
-
-## Проверки и обслуживание
-
-```bash
-go test -race ./...
-go vet ./...
 docker compose -f compose.app.yaml config --quiet
-docker compose -f compose.monitoring.yaml config --quiet
-bash scripts/dagger.sh verify
+docker compose -f compose.app.yaml up -d --wait --wait-timeout 300
+docker compose -f compose.app.yaml ps
+curl -I http://127.0.0.1:3001/
 ```
 
-`deploy-monitoring` запускает `promtool check config` вместе с rules. После изменения дашборда выполните `python3 scripts/dashboard.py` и `configure-grafana`. После изменения Prometheus/blackbox выполните `deploy-monitoring`: команда перезапускает их для загрузки конфигураций.
+Откройте [Uptime Kuma](http://127.0.0.1:3001/) и создайте учётную запись администратора при первом запуске. База выбирается автоматически через окружение. Если порт занят, задайте другой: `KUMA_PORT=3002 docker compose -f compose.app.yaml up -d --wait --wait-timeout 300`.
 
-Фактические результаты локальных проверок и их границы приведены в [docs/VALIDATION.md](docs/VALIDATION.md). `AI_REVIEW.md` содержит использованные запросы и пять обнаруженных ошибок AI с исправлениями.
+Kuma подключается к `mariadb:3306` по внутренней Compose-сети под пользователем `uptime_kuma`, имеющим права на одноимённую БД. Порт MariaDB не опубликован на хосте; веб-интерфейс опубликован только на loopback.
 
-Остановка с сохранением данных:
+Проверка MariaDB — штатная `healthcheck.sh --connect --innodb_initialized`. Kuma ждёт `service_healthy` БД. Её HTTP-проверка принимает только 200 или 302; это проверка веб-сервера, а не полный тест SQL-запросов или работы мониторов. Параметры соответствуют [документации MariaDB](https://mariadb.com/docs/server/server-management/automated-mariadb-deployment-and-administration/docker-and-mariadb/using-healthcheck-sh) и [порядку запуска Compose](https://docs.docker.com/compose/how-tos/startup-order/).
+
+Для диагностики:
+
+```bash
+docker compose -f compose.app.yaml logs --tail=100 mariadb uptime-kuma
+```
+
+## Хранение данных и перезапуск
+
+Именованные тома `mariadb_data` и `kuma_data` хранят соответственно `/var/lib/mysql` и `/app/data`. Второй необходим и при внешней БД: там остаются конфигурация подключения, загрузки и другие файлы Kuma.
 
 ```bash
 docker compose -f compose.app.yaml down
-docker compose -f compose.monitoring.yaml down
+docker compose -f compose.app.yaml up -d --wait --wait-timeout 300
 ```
 
-Не используйте `down -v`, если данные нужны. Для проверки persistence создайте аккаунт/монитор Kuma, выполните `down`, затем `deploy-all` и убедитесь, что они сохранились. Перед ручным удалением volumes сделайте backup.
+После повторного запуска созданная учётная запись и настройки должны сохраниться. `down` сохраняет тома; `down -v` удаляет данные. Тома обеспечивают сохранность при пересоздании контейнеров, но не заменяют резервное копирование.
 
-| Симптом | Действие |
-|---|---|
-| Permission denied Docker socket | Проверить `docker info`, настройки Docker/WSL и права пользователя; не делать сокет общедоступным |
-| Port already allocated | Освободить порт или изменить его в `.env`; повторить deploy |
-| Secret differs from existing volume | Восстановить первоначальные `.secrets` |
-| MariaDB unhealthy | Проверить диск, прежние volumes и локально `docker compose -f compose.app.yaml logs --tail=80 mariadb` |
-| Нет метрик контейнеров | Проверить cAdvisor logs, cgroup v2, системные mounts и Docker API; `verify` не принимает пустые метрики |
-| Grafana HTTP 401 | Восстановить исходный пароль; ручная смена в UI требует согласованной ротации |
-| Scrape target DOWN | Проверить [targets](http://localhost:9090/targets), Docker DNS и экспортёр |
+Параметры создания пользователей и паролей MariaDB применяются только к пустому каталогу данных, как указано в [документации образа](https://mariadb.com/docs/server/server-management/automated-mariadb-deployment-and-administration/docker-and-mariadb/mariadb-server-docker-official-image-environment-variables). Изменение файла пароля после инициализации само по себе пароль в БД не меняет.
 
-Логи приложений могут содержать чувствительные сведения: просматривайте их локально и проверяйте перед отправкой. Контроллер выводит статусы контейнеров без значений секретов.
+`unless-stopped` перезапускает завершившийся процесс, но статус `unhealthy` сам по себе перезапуска не вызывает. Зависимость `service_healthy` проверяется при запуске через Compose и не является постоянным контролем доступности БД.
 
-## Сдача
+## Результат локальной проверки
+
+4 ноября 2026 года пара Kuma 2.5.9 и MariaDB 11.4.13 успешно запущена: оба сервиса `healthy`, схема Kuma содержит 28 таблиц, HTTP отвечает 302. SQL-подключение проверено из контейнера Kuma под пользователем приложения. Временные маркеры в БД и `/app/data` сохранились после `down` и повторного `up`; после проверки маркеры удалены. Администратор и пользовательские мониторы ещё не создавались.
+
+## Слой мониторинга
+
+Компоненты: Prometheus 3.7.3, Grafana 12.2.1, Node Exporter 1.10.2, cAdvisor 0.60.6, mysqld_exporter 0.17.2 и Blackbox Exporter 0.27.0. Версии закреплены в Compose.
+
+- Node Exporter собирает CPU, RAM, load average, диски и файловые системы Linux-хоста. Сетевые коллекторы отключены, чтобы при работе в bridge-сети не выдавать сеть контейнера за сеть хоста.
+- cAdvisor собирает ресурсы контейнеров, включая CPU, память, сеть и дисковый ввод-вывод, если соответствующие счётчики доступны в Docker/cgroups.
+- mysqld_exporter подключается к MariaDB отдельным пользователем `monitoring` с лимитом в 3 соединения и рекомендованными upstream правами `PROCESS`, `REPLICATION CLIENT`, `SELECT`. Root-пароль ему не передаётся.
+- Blackbox Exporter выполняет HTTP GET к Kuma, следует редиректам и проверяет итоговый статус 2xx. Метрики показывают доступность HTTP и длительность пробы, а не время выполнения внутренних мониторов Kuma.
+
+Настройки основаны на документации [Node Exporter](https://github.com/prometheus/node_exporter#docker), [cAdvisor](https://github.com/google/cadvisor/blob/master/docs/running.md), [mysqld_exporter](https://github.com/prometheus/mysqld_exporter/tree/v0.17.2), [Blackbox Exporter](https://github.com/prometheus/blackbox_exporter/blob/v0.27.0/example.yml), [Prometheus](https://prometheus.io/docs/prometheus/latest/installation/) и [Grafana](https://grafana.com/docs/grafana/latest/setup-grafana/installation/docker/).
+
+### Запуск мониторинга
+
+Сначала запустите приложение по инструкции выше. Его сеть `safeboard-app_default` должна существовать: через неё только mysqld_exporter и Blackbox Exporter обращаются к приложению. Остальные сервисы находятся в отдельной сети мониторинга.
 
 ```bash
-python3 scripts/package.py --surname Фамилия --name Имя
+bash scripts/init-monitoring.sh
+docker compose -f compose.monitoring.yaml config --quiet
+docker compose -f compose.monitoring.yaml run --rm --no-deps --entrypoint promtool prometheus check config /etc/prometheus/prometheus.yml
+docker compose -f compose.monitoring.yaml up -d --wait --wait-timeout 180
+docker compose -f compose.monitoring.yaml ps
 ```
 
-Архив `dist/Фамилия_Имя_DevOps_Тестовое.tar.gz` включает только материалы запуска и проверки. Секреты, рабочие данные, `.git`, Dagger CLI, исходное задание и вложенный пустой репозиторий исключены. Получатель создаёт собственные секреты. Перед сдачей распакуйте архив и повторите запуск. Загрузку на портал кандидат выполняет самостоятельно.
+Скрипт создаёт пароли и пользователя мониторинга в уже работающей MariaDB; повторный запуск сохраняет пароли и повторно применяет права. Это работает и с уже заполненным томом БД, в отличие от скрипта в `docker-entrypoint-initdb.d`, который выполняется только на пустом томе. Не запускайте скрипт с `bash -x`: отладочная трассировка покажет секреты.
+
+Prometheus доступен на [127.0.0.1:9090](http://127.0.0.1:9090/), Grafana — на [127.0.0.1:3000](http://127.0.0.1:3000/). Порты экспортёров на хост не публикуются. Логин Grafana — `admin`, пароль можно посмотреть локально:
+
+```bash
+cat .secrets/monitoring/grafana_admin_password
+```
+
+Secrets находятся в каталоге с правами 0700 и исключены из Git. Смонтированные файлы конфигурации экспортёра и пароля Grafana читаемы непривилегированными пользователями контейнеров. Пароль Grafana применяется при первом создании её БД; последующее изменение файла не меняет пароль существующей учётной записи.
+
+### Ручная проверка метрик
+
+1. Выполните `docker compose -f compose.monitoring.yaml ps`: все шесть сервисов должны быть `healthy`. Это проверяет HTTP-точки готовности процессов; состояние БД и Kuma оценивайте отдельными метриками ниже.
+2. Откройте [Prometheus Targets](http://127.0.0.1:9090/targets). Через 30–60 секунд все шесть целей должны быть `UP`, а Last Error — пустым.
+3. На странице [запросов Prometheus](http://127.0.0.1:9090/query) выполните выражения из таблицы. Для `rate` дайте накопиться хотя бы минуте данных.
+
+| Что проверить | PromQL | Ожидаемый результат |
+| --- | --- | --- |
+| Сбор метрик | `up` | Шесть рядов со значением 1 |
+| CPU хоста, % | `100 * (1 - avg(rate(node_cpu_seconds_total{job="node",mode="idle"}[1m])))` | Число от 0 до 100 |
+| Использование RAM хоста, % | `100 * (1 - node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"})` | Число от 0 до 100 |
+| Свободное место | `node_filesystem_avail_bytes{job="node",mountpoint="/"}` | Доступные байты корневой файловой системы |
+| RAM контейнеров приложения | `container_memory_working_set_bytes{job="cadvisor",container_label_com_docker_compose_project="safeboard-app"}` | Отдельные ряды Kuma и MariaDB |
+| CPU контейнеров, ядра | `rate(container_cpu_usage_seconds_total{job="cadvisor",container_label_com_docker_compose_project="safeboard-app"}[1m])` | Отдельные ряды Kuma и MariaDB |
+| MariaDB | `mysql_up{job="mariadb"}` | 1 — экспортёр подключился к БД |
+| Соединения MariaDB | `mysql_global_status_threads_connected{job="mariadb"}` | Число активных подключений |
+| HTTP-доступность Kuma | `probe_success{job="kuma-http"}` | 1 — HTTP-проба успешна |
+| Время HTTP-пробы Kuma, секунды | `probe_duration_seconds{job="kuma-http"}` | Неотрицательное значение |
+| Итоговый HTTP-код Kuma | `probe_http_status_code{job="kuma-http"}` | 200 после перехода по редиректу |
+
+`up{job="mariadb"}=1` означает доступность экспортёра, а `mysql_up=1` — успешное подключение к MariaDB. Аналогично, состояние Kuma показывает `probe_success`, а не `up` экспортёра. Отсутствие рядов нельзя считать нулевым потреблением или исправностью сервиса.
+
+4. Откройте Grafana и войдите. Источник данных и дашборд пока не настроены; это следующий этап. Проверка API: `curl --fail http://127.0.0.1:3000/api/health` должна вернуть `database: ok`.
+
+Диагностика:
+
+```bash
+docker compose -f compose.monitoring.yaml logs --tail=100
+curl --fail http://127.0.0.1:9090/-/ready
+curl --fail http://127.0.0.1:3000/api/health
+```
+
+### Постоянное хранение мониторинга
+
+Prometheus хранит временные ряды в томе `prometheus_data` (`/prometheus`), срок хранения — 15 дней. Grafana хранит свою БД и настройки в `grafana_data` (`/var/lib/grafana`). Экспортёры не требуют томов с историей: историю записывает Prometheus, их конфигурации лежат в репозитории, секреты — в `.secrets`.
+
+Для ручной проверки сохранности запомните время существующей точки на графике Prometheus, затем пересоздайте контейнеры:
+
+```bash
+docker compose -f compose.monitoring.yaml down
+docker compose -f compose.monitoring.yaml up -d --wait --wait-timeout 180
+```
+
+Старая точка должна остаться в выбранном временном диапазоне; сохранённые настройки Grafana также должны остаться. Не добавляйте `-v`. Пока мониторинг подключён к сети приложения, для пересоздания обеих сетей останавливайте сначала мониторинг, затем приложение; запускайте в обратном порядке.
+
+Проверено 4 ноября 2026 года: все шесть сервисов `healthy`, шесть целей Prometheus `UP`; метрики обоих контейнеров приложения поступают, `mysql_up=1`, HTTP-проба Kuma успешна. Метрики числа CPU, полного объёма RAM и размера корневой ФС сверены с хостом. После пересоздания контейнеров историческая точка Prometheus и изменённая тема Grafana сохранились; исходная тема восстановлена. Источник данных и дашборд не создавались.
+
+### Доступ к ресурсам хоста
+
+Стенд рассчитан на Linux Docker Engine со стандартным каталогом `/var/lib/docker` и rootful Docker. Node Exporter получает доступ к `/proc`, `/sys` и корню хоста только для чтения. cAdvisor работает привилегированно с доступом к Docker-сокету и cgroups; суффикс `:ro` у сокета не запрещает изменяющие запросы Docker API. Это доверенный инфраструктурный компонент.
+
+В Docker Desktop метрики относятся к Linux-виртуальной машине Docker, а не всей macOS/Windows. Rootless Docker и нестандартный Docker Root Dir требуют адаптации монтирований и прав. Проверяйте наличие рядов обоих контейнеров приложения, а не только доступность cAdvisor.
