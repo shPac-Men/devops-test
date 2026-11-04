@@ -1,0 +1,65 @@
+rule_files:
+  - rules.yml
+evaluation_interval: 5s
+tests:
+  - name: healthy Kuma and MariaDB
+    interval: 5s
+    input_series:
+      - series: 'up{job="mysql",instance="db",service="mariadb"}'
+        values: '1+0x12'
+      - series: 'mysql_up{job="mysql",instance="db",service="mariadb"}'
+        values: '1+0x12'
+      - series: 'up{job="blackbox",instance="kuma",service="kuma"}'
+        values: '1+0x12'
+      - series: 'probe_success{job="blackbox",instance="kuma",service="kuma"}'
+        values: '1+0x12'
+    promql_expr_test:
+      - expr: safeboard:kuma_ok
+        eval_time: 20s
+        exp_samples: [{labels: 'safeboard:kuma_ok', value: 1}]
+      - expr: safeboard:mariadb_ok
+        eval_time: 20s
+        exp_samples: [{labels: 'safeboard:mariadb_ok', value: 1}]
+  - name: database down and HTTP down
+    interval: 5s
+    input_series:
+      - series: 'up{job="mysql",instance="db"}'
+        values: '1+0x12'
+      - series: 'mysql_up{job="mysql",instance="db"}'
+        values: '0+0x12'
+      - series: 'up{job="blackbox",instance="kuma",service="kuma"}'
+        values: '1+0x12'
+      - series: 'probe_success{job="blackbox",instance="kuma",service="kuma"}'
+        values: '0+0x12'
+    promql_expr_test:
+      - expr: safeboard:kuma_ok
+        eval_time: 20s
+        exp_samples: [{labels: 'safeboard:kuma_ok', value: 0}]
+      - expr: safeboard:mariadb_ok
+        eval_time: 20s
+        exp_samples: [{labels: 'safeboard:mariadb_ok', value: 0}]
+  - name: absent metrics fail closed
+    interval: 5s
+    input_series: []
+    promql_expr_test:
+      - expr: safeboard:platform_ok
+        eval_time: 20s
+        exp_samples: [{labels: 'safeboard:platform_ok', value: 0}]
+  - name: old success samples must not stay green
+    interval: 5s
+    input_series:
+      - series: 'up{job="mysql",instance="db"}'
+        values: '1 _ _ _ _ _ _ _ _'
+      - series: 'mysql_up{job="mysql",instance="db"}'
+        values: '1 _ _ _ _ _ _ _ _'
+      - series: 'up{job="blackbox",instance="kuma",service="kuma"}'
+        values: '1 _ _ _ _ _ _ _ _'
+      - series: 'probe_success{job="blackbox",instance="kuma",service="kuma"}'
+        values: '1 _ _ _ _ _ _ _ _'
+    promql_expr_test:
+      - expr: safeboard:kuma_ok
+        eval_time: 30s
+        exp_samples: [{labels: 'safeboard:kuma_ok', value: 0}]
+      - expr: safeboard:mariadb_ok
+        eval_time: 30s
+        exp_samples: [{labels: 'safeboard:mariadb_ok', value: 0}]

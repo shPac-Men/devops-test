@@ -1,0 +1,42 @@
+global:
+  scrape_interval: 5s
+  scrape_timeout: 3s
+  evaluation_interval: 5s
+rule_files:
+  - /etc/safeboard/prometheus/rules.yml
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: [prometheus:9090]
+  - job_name: cadvisor
+    static_configs:
+      - targets: [cadvisor:8080]
+  - job_name: node
+    static_configs:
+      - targets: [node-exporter:9100]
+  - job_name: mysql
+    static_configs:
+      - targets: [mysqld-exporter:9104]
+        labels:
+          service: mariadb
+  - job_name: blackbox
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: [http://kuma:3001/]
+        labels:
+          service: kuma
+      - targets: [http://grafana:3000/api/health]
+        labels:
+          service: grafana
+      - targets: [http://prometheus:9090/-/ready]
+        labels:
+          service: prometheus
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

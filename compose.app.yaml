@@ -1,0 +1,72 @@
+name: safeboard-app
+services:
+  mariadb:
+    image: mariadb:11.4.9
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD_FILE: /run/root/password
+      MARIADB_DATABASE: kuma
+      MARIADB_USER: kuma
+      MARIADB_PASSWORD_FILE: /run/kuma/password
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - root-secret:/run/root:ro
+      - kuma-secret:/run/kuma:ro
+      - exporter-secret:/run/exporter:ro
+      - config:/opt/safeboard:ro
+    entrypoint: ["/bin/bash", "-c", "cp /opt/safeboard/mariadb/init-exporter.sh /docker-entrypoint-initdb.d/init-exporter.sh; exec docker-entrypoint.sh mariadbd"]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 30s
+    stop_grace_period: 30s
+    networks:
+      platform:
+        aliases: [mariadb]
+  kuma:
+    image: louislam/uptime-kuma:2.5.9
+    restart: unless-stopped
+    environment:
+      UPTIME_KUMA_DB_TYPE: mariadb
+      UPTIME_KUMA_DB_HOSTNAME: ${DB_HOST:-mariadb}
+      UPTIME_KUMA_DB_PORT: "3306"
+      UPTIME_KUMA_DB_NAME: kuma
+      UPTIME_KUMA_DB_USERNAME: kuma
+      UPTIME_KUMA_DB_PASSWORD_FILE: /run/kuma/password
+    ports: ["127.0.0.1:${KUMA_PORT:-3001}:3001"]
+    volumes:
+      - kuma-data:/app/data
+      - kuma-secret:/run/kuma:ro
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "extra/healthcheck.js"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 60s
+    networks:
+      platform:
+        aliases: [kuma]
+networks:
+  platform:
+    external: true
+    name: safeboard
+volumes:
+  mariadb-data:
+  kuma-data:
+  root-secret:
+    external: true
+    name: safeboard-root-secret
+  kuma-secret:
+    external: true
+    name: safeboard-kuma-secret
+  exporter-secret:
+    external: true
+    name: safeboard-exporter-secret
+  config:
+    external: true
+    name: safeboard-config

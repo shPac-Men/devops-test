@@ -1,0 +1,12 @@
+groups:
+  - name: safeboard
+    interval: 5s
+    rules:
+      - record: safeboard:kuma_ok
+        expr: (min(probe_success{job="blackbox",service="kuma"} * (time() - timestamp(probe_success{job="blackbox",service="kuma"}) < bool 20) * on(job,instance) up{job="blackbox",service="kuma"}) or vector(0))
+      - record: safeboard:mariadb_ok
+        expr: (min(mysql_up{job="mysql"} * (time() - timestamp(mysql_up{job="mysql"}) < bool 20) * on(job,instance) up{job="mysql"}) or vector(0))
+      - record: safeboard:monitoring_ok
+        expr: ((count((up == 1) and (time() - timestamp(up) < 20)) == bool 7) * (min(probe_success{job="blackbox",service=~"grafana|prometheus"}) or vector(0))) or vector(0)
+      - record: safeboard:platform_ok
+        expr: safeboard:kuma_ok * safeboard:mariadb_ok * safeboard:monitoring_ok

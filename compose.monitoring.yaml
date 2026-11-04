@@ -1,0 +1,81 @@
+name: safeboard-monitoring
+x-defaults: &defaults
+  restart: unless-stopped
+  networks: [platform]
+services:
+  prometheus:
+    <<: *defaults
+    image: prom/prometheus:v3.7.3
+    command:
+      - --config.file=/etc/safeboard/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    ports: ["127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"]
+    volumes:
+      - config:/etc/safeboard:ro
+      - prometheus-data:/prometheus
+  grafana:
+    <<: *defaults
+    image: grafana/grafana:12.2.1
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/grafana/password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports: ["127.0.0.1:${GRAFANA_PORT:-3000}:3000"]
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - grafana-secret:/run/grafana:ro
+  cadvisor:
+    <<: *defaults
+    image: ghcr.io/google/cadvisor:0.60.6
+    privileged: true
+    devices: ["/dev/kmsg:/dev/kmsg"]
+    command: ["--docker_only=true", "--housekeeping_interval=5s", "--store_container_labels=true"]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+  node-exporter:
+    <<: *defaults
+    image: prom/node-exporter:v1.10.2
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/storage/.+)($|/)
+    volumes: ["/:/host:ro,rslave"]
+  mysqld-exporter:
+    <<: *defaults
+    image: prom/mysqld-exporter:v0.17.2
+    command:
+      - --config.my-cnf=/run/exporter/my.cnf
+      - --mysqld.address=${DB_HOST:-mariadb}:3306
+      - --no-collect.slave_status
+    volumes: ["exporter-secret:/run/exporter:ro"]
+  blackbox-exporter:
+    <<: *defaults
+    image: prom/blackbox-exporter:v0.27.0
+    command: ["--config.file=/etc/safeboard/blackbox/blackbox.yml"]
+    volumes: ["config:/etc/safeboard:ro"]
+networks:
+  platform:
+    external: true
+    name: safeboard
+volumes:
+  prometheus-data:
+  grafana-data:
+  config:
+    external: true
+    name: safeboard-config
+  exporter-secret:
+    external: true
+    name: safeboard-exporter-secret
+  grafana-secret:
+    external: true
+    name: safeboard-grafana-secret

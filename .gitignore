@@ -1,0 +1,12 @@
+.secrets/
+.tools/
+dist/
+build/
+.env
+*.docx
+.~lock.*
+devops-test/
+.dagger/internal/
+.dagger/querybuilder/
+.dagger/dagger.gen.go
+__pycache__/
