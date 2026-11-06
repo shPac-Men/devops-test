@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -21,12 +22,26 @@ type Safeboard struct {
 }
 
 func New(
-	// Absolute project path on the Docker host (not inside the Dagger engine).
+	ctx context.Context,
+	// Absolute project path on the Docker host; inferred from the local workspace when omitted.
+	// +optional
 	projectDir string,
-	// Host Docker socket; normally /var/run/docker.sock.
+	// Host Docker socket; the project .env supplies /var/run/docker.sock by default.
 	dockerSocket *dagger.Socket,
-) *Safeboard {
-	return &Safeboard{ProjectDir: projectDir, DockerSocket: dockerSocket}
+) (*Safeboard, error) {
+	if projectDir == "" {
+		workspace := dag.CurrentWorkspace()
+		address, err := workspace.Address(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("detect project directory: %w", err)
+		}
+		location, err := url.Parse(address)
+		if err != nil || location.Scheme != "file" || location.Host != "" || !filepath.IsAbs(location.Path) {
+			return nil, fmt.Errorf("project directory requires a local workspace; pass --project-dir explicitly")
+		}
+		projectDir = filepath.Clean(location.Path)
+	}
+	return &Safeboard{ProjectDir: projectDir, DockerSocket: dockerSocket}, nil
 }
 
 // Deploy MariaDB and Uptime Kuma, preserving credentials and data volumes.

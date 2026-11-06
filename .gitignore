@@ -1,4 +1,5 @@
-.env
+# .env contains public Dagger defaults and is part of the project.
+.env.local
 .secrets/
 .tools/
 dist/

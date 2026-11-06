@@ -2,6 +2,8 @@
 
 Два независимых Compose-слоя: Kuma + MariaDB и мониторинг (Prometheus, Grafana, Node Exporter, cAdvisor, mysqld_exporter, Blackbox Exporter). Запуском управляет Go-модуль Dagger. Реализованы `deploy-all` и chaos testing; Galera пока нет.
 
+Prometheus закреплён на версии **3.13.5 LTS**, Grafana — **13.3.0**.
+
 ## Подготовка
 
 Нужны Linux с rootful Docker Engine, стандартный каталог `/var/lib/docker`, сокет `/var/run/docker.sock` и Dagger CLI **v0.21.11** в PATH. Для загрузки образов требуется доступ в интернет. Порты 3000, 3001 и 9090 должны быть свободны.
@@ -20,26 +22,30 @@ Docker должен быть доступен текущему пользова�
 Все команды выполняются из каталога с `dagger.json`:
 
 ```bash
-sh scripts/dagger.sh deploy-all
+dagger call deploy-all
 ```
 
 Или запустите этапы отдельно, в этом порядке:
 
 ```bash
-sh scripts/dagger.sh deploy-app
-sh scripts/dagger.sh deploy-monitoring
-sh scripts/dagger.sh configure-grafana
+dagger call deploy-app
+dagger call deploy-monitoring
+dagger call configure-grafana
 ```
 
 Пароли создаются автоматически в `.secrets`; существующие пароли и тома сохраняются. `configure-grafana` создаёт или обновляет источник Prometheus и дашборд без дубликатов. При ошибке `deploy-all` останавливается и указывает этап и причину; после исправления его можно повторить.
 
 Четвёртый этап `deploy-all`, `validate-platform`, в течение общего таймаута 120 секунд ждёт шесть ожидаемых целей Prometheus со статусом `UP`, свежие метрики (не старше 30 секунд), `mysql_up=1` и успешную HTTP-пробу Kuma. Через Grafana выполняются запросы всех 13 сохранённых панелей: проверяются статусы, конечные числовые значения и наличие CPU/RAM хоста и обоих контейнеров приложения. Для CPU ожидается накопление истории. При ошибке этап возвращает ненулевой код с конкретной причиной. Проверка подтверждает данные панелей; внешний вид проверяется в браузере.
 
-Обёртка использует `dagger` из PATH или `.tools/dagger`, передавая путь проекта и сокет. Прямой вызов:
+Дополнительные аргументы не нужны: путь проекта определяется из локального workspace Dagger, а файл `.env` из проекта задаёт `dockerSocket=/var/run/docker.sock`. Этот файл содержит только публичную настройку и должен входить в архив; пароли хранятся отдельно в `.secrets`.
+
+При необходимости путь и сокет можно переопределить:
 
 ```bash
 dagger call --project-dir="$PWD" --docker-socket=/var/run/docker.sock deploy-all
 ```
+
+Также доступна обёртка `sh scripts/dagger.sh deploy-all`: она использует `dagger` из PATH или `.tools/dagger` и те же настройки по умолчанию.
 
 ## Доступ и проверка
 
@@ -71,8 +77,8 @@ docker compose -f compose.monitoring.yaml ps
 После `deploy-all` запускайте цели по одной, наблюдая за соответствующей панелью Grafana:
 
 ```bash
-sh scripts/dagger.sh chaos-test --target=mariadb
-sh scripts/dagger.sh chaos-test --target=uptime-kuma
+dagger call chaos-test --target=mariadb
+dagger call chaos-test --target=uptime-kuma
 ```
 
 Тест проверяет свежие данные панели `1 → 0 → 1`, затем отдельно автоматический перезапуск после завершения основного процесса. После ручного stop нужен явный start — [restart-policy Docker](https://docs.docker.com/engine/containers/start-containers-automatically/#restart-policy-details) подавляется ручной остановкой. Данные панели проверяются через API, без скриншотов.
@@ -94,7 +100,7 @@ python3 -m unittest discover -s scripts -p test_chaos_test.py -v
 ```bash
 docker compose -f compose.monitoring.yaml down
 docker compose -f compose.app.yaml down
-sh scripts/dagger.sh deploy-all
+dagger call deploy-all
 ```
 
 Логи для диагностики:

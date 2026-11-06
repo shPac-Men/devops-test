@@ -15,6 +15,14 @@ import urllib.parse
 import urllib.request
 
 
+class TestInterrupted(Exception):
+    """Exit observation loops and restore the target instead of retrying."""
+
+
+class PhaseTimeout(Exception):
+    """Stop a phase without treating its deadline as a retryable error."""
+
+
 class UnixConnection(http.client.HTTPConnection):
     def connect(self):
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -22,8 +30,8 @@ class UnixConnection(http.client.HTTPConnection):
         self.sock.connect('/var/run/docker.sock')
 
 
-def docker(method, path):
-    connection = UnixConnection('localhost', timeout=20)
+def docker(method, path, timeout=20):
+    connection = UnixConnection('localhost', timeout=timeout)
     try:
         connection.request(method, path)
         response = connection.getresponse()
@@ -53,7 +61,7 @@ class ChaosTest:
 
     def grafana(self, path):
         req = urllib.request.Request('http://127.0.0.1:3000' + path, headers={'Authorization': self.auth})
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=self.request_timeout(10)) as response:
             return json.load(response)
 
     def query(self, expression):
@@ -65,24 +73,51 @@ class ChaosTest:
         return float(rows[0]['value'][1])
 
     def inspect(self):
-        return docker('GET', self.path + '/json')
+        return docker('GET', self.path + '/json', timeout=self.request_timeout(20))
 
     def healthy(self):
         state = self.inspect()['State']
         return state['Running'] and state.get('Health', {}).get('Status') == 'healthy'
 
+    def request_timeout(self, maximum):
+        deadline = getattr(self, '_phase_deadline', None)
+        if deadline is None:
+            return maximum
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise PhaseTimeout('phase deadline reached')
+        return min(maximum, remaining)
+
     def wait(self, label, condition):
-        deadline = time.monotonic() + self.timeout
+        self._phase_deadline = time.monotonic() + self.timeout
         last_error = 'condition not yet satisfied'
-        while time.monotonic() < deadline:
-            try:
-                if condition():
+
+        def expired(signum, frame):
+            raise PhaseTimeout('phase deadline reached')
+
+        previous_handler = signal.signal(signal.SIGALRM, expired)
+        try:
+            # Socket timeouts alone cannot bound a sequence of requests or
+            # a response that keeps delivering small chunks of data.
+            signal.setitimer(signal.ITIMER_REAL, self.timeout)
+            while True:
+                self.request_timeout(2)
+                try:
+                    passed = condition()
+                except (RuntimeError, OSError, ValueError) as error:
+                    last_error = str(error)
+                    passed = False
+                pause = self.request_timeout(2)
+                if passed:
                     print(f'PASS: {label}', flush=True)
                     return
-            except (RuntimeError, OSError, ValueError) as error:
-                last_error = str(error)
-            time.sleep(2)
-        raise RuntimeError(f'{label}: timed out after {self.timeout}s ({last_error})')
+                time.sleep(pause)
+        except PhaseTimeout:
+            raise RuntimeError(f'{label}: timed out after {self.timeout}s ({last_error})') from None
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous_handler)
+            self._phase_deadline = None
 
     def observed(self, value, since):
         # A successful scrape and a new raw sample prevent a monitoring outage
@@ -162,7 +197,7 @@ class ChaosTest:
 
 
 def interrupted(signum, frame):
-    raise RuntimeError(f'Test interrupted by signal {signum}')
+    raise TestInterrupted(f'Test interrupted by signal {signum}')
 
 
 if __name__ == '__main__':

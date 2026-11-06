@@ -9,4 +9,4 @@ else
   echo 'Install Dagger CLI v0.21.11 and make it available in PATH.' >&2
   exit 1
 fi
-exec "$dagger_bin" call --project-dir="$(pwd -P)" --docker-socket=/var/run/docker.sock "$@"
+exec "$dagger_bin" call "$@"
