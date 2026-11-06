@@ -59,7 +59,7 @@ func (m *Safeboard) ConfigureGrafana(ctx context.Context) (string, error) {
 	return m.run(ctx, curlImage, "safeboard-monitoring_default", true, "sh scripts/configure-grafana.sh")
 }
 
-// Deploy the application, monitoring and Grafana configuration in order.
+// Deploy the platform and validate fresh metrics through the saved Grafana dashboard.
 // +cache="never"
 func (m *Safeboard) DeployAll(ctx context.Context) (string, error) {
 	steps := []struct {
@@ -69,6 +69,10 @@ func (m *Safeboard) DeployAll(ctx context.Context) (string, error) {
 		{"deploy-app", m.DeployApp},
 		{"deploy-monitoring", m.DeployMonitoring},
 		{"configure-grafana", m.ConfigureGrafana},
+		{"validate-platform", func(ctx context.Context) (string, error) {
+			return m.run(ctx, "python:3.14.0-alpine", "safeboard-monitoring_default", true,
+				"python3 -u scripts/validate-platform.py --timeout=120")
+		}},
 	}
 	var output strings.Builder
 	for i, step := range steps {
