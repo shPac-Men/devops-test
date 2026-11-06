@@ -88,13 +88,14 @@ services:
       <<: *healthcheck
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
 
-  mysqld-exporter:
+  mysqld-exporter: &mysqld-exporter
     image: prom/mysqld-exporter:v0.17.2
     restart: unless-stopped
     command:
       - --config.my-cnf=/run/secrets/mysqld_exporter_cnf
       - --mysqld.address=mariadb:3306
-      # Single-node MariaDB has no replication to monitor.
+      - --collect.global_status
+      # Galera uses wsrep metrics rather than asynchronous replication.
       - --no-collect.slave_status
     secrets:
       - mysqld_exporter_cnf
@@ -105,6 +106,20 @@ services:
       <<: *healthcheck
       # Exporter readiness is separate from mysql_up (database availability).
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9104/"]
+
+  mysqld-exporter-2:
+    <<: *mysqld-exporter
+    command:
+      - --config.my-cnf=/run/secrets/mysqld_exporter_cnf
+      - --mysqld.address=mariadb-2:3306
+      - --no-collect.slave_status
+
+  mysqld-exporter-3:
+    <<: *mysqld-exporter
+    command:
+      - --config.my-cnf=/run/secrets/mysqld_exporter_cnf
+      - --mysqld.address=mariadb-3:3306
+      - --no-collect.slave_status
 
   blackbox-exporter:
     image: prom/blackbox-exporter:v0.27.0

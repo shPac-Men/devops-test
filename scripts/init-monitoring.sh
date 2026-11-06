@@ -23,8 +23,8 @@ fi
 # Root credentials remain inside MariaDB; SQL is sent on stdin, not argv.
 docker compose -f compose.app.yaml exec -T mariadb sh -ec \
   'export MYSQL_PWD="$(cat /run/secrets/mariadb_root_password)"; exec mariadb --user=root' <<SQL
-CREATE USER IF NOT EXISTS 'monitoring'@'%' IDENTIFIED BY '${exporter_password}' WITH MAX_USER_CONNECTIONS 3;
-ALTER USER 'monitoring'@'%' IDENTIFIED BY '${exporter_password}' WITH MAX_USER_CONNECTIONS 3;
+CREATE USER IF NOT EXISTS 'monitoring'@'%' IDENTIFIED BY '${exporter_password}' WITH MAX_USER_CONNECTIONS 10;
+ALTER USER 'monitoring'@'%' IDENTIFIED BY '${exporter_password}' WITH MAX_USER_CONNECTIONS 10;
 GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'monitoring'@'%';
 SQL
 

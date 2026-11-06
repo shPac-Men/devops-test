@@ -48,10 +48,7 @@ func New(
 // +cache="never"
 func (m *Safeboard) DeployApp(ctx context.Context) (string, error) {
 	return m.run(ctx, dockerImage, "", false, `
-sh scripts/init-app.sh
-docker compose -f compose.app.yaml config --quiet
-docker compose -f compose.app.yaml up -d --wait --wait-timeout 300
-docker compose -f compose.app.yaml ps
+sh scripts/deploy-galera.sh
 `)
 }
 
@@ -64,6 +61,7 @@ sh scripts/init-monitoring.sh
 docker compose -f compose.monitoring.yaml config --quiet
 docker compose -f compose.monitoring.yaml run --rm --no-deps --entrypoint promtool prometheus check config /etc/prometheus/prometheus.yml
 docker compose -f compose.monitoring.yaml up -d --wait --wait-timeout 180
+docker compose -f compose.monitoring.yaml kill -s SIGHUP prometheus
 docker compose -f compose.monitoring.yaml ps
 `)
 }
@@ -122,6 +120,18 @@ func (m *Safeboard) ChaosTest(
 		return "", fmt.Errorf("chaos-test (%s) failed: %w", target, err)
 	}
 	return result, nil
+}
+
+// Verify replicated writes and HAProxy failover while one Galera node is stopped.
+// +cache="never"
+func (m *Safeboard) TestGalera(ctx context.Context) (string, error) {
+	return m.run(ctx, dockerImage, "", false, "sh scripts/test-galera.sh")
+}
+
+// Stop the application and Galera sequentially for safe cold-start recovery.
+// +cache="never"
+func (m *Safeboard) StopApp(ctx context.Context) (string, error) {
+	return m.run(ctx, dockerImage, "", false, "sh scripts/stop-galera.sh")
 }
 
 // A host-side helper mounts the project at the same absolute path, so Compose

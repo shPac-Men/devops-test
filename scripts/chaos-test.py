@@ -55,8 +55,8 @@ class ChaosTest:
             raise RuntimeError(f'Expected exactly one safeboard-app/{target} container; run deploy-all first')
         self.container_id = containers[0]['Id']
         self.path = f'/containers/{self.container_id}'
-        self.metric = 'mysql_up{job="mariadb"}' if target == 'mariadb' else 'probe_success{job="kuma-http"}'
-        self.scrape = 'up{job="mariadb"}' if target == 'mariadb' else 'up{job="kuma-http"}'
+        self.metric = 'mysql_up{job="mariadb",instance="mysqld-exporter:9104"}' if target == 'mariadb' else 'probe_success{job="kuma-http"}'
+        self.scrape = 'up{job="mariadb",instance="mysqld-exporter:9104"}' if target == 'mariadb' else 'up{job="kuma-http"}'
         self.modified = False
 
     def grafana(self, path):
@@ -143,7 +143,7 @@ class ChaosTest:
         panel = next(p for p in dashboard['panels'] if p['id'] == panel_id)
         self.panel_expression = panel['targets'][0]['expr']
         # Check the saved dashboard actually represents the selected target.
-        if self.metric not in self.panel_expression or self.scrape not in self.panel_expression:
+        if ('mysql_up{job="mariadb"}' if self.target == 'mariadb' else self.metric) not in self.panel_expression or ('up{job="mariadb"}' if self.target == 'mariadb' else self.scrape) not in self.panel_expression:
             raise RuntimeError('Saved Grafana status panel does not match the target metrics')
         self.wait('baseline dashboard status = 1', lambda: self.observed(1, time.time() - 45))
         print(f'Target: {self.target}; dashboard panel: {panel["title"]}', flush=True)

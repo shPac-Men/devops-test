@@ -19,7 +19,7 @@
     "panels": [
       {
         "id": 1,
-        "title": "MariaDB",
+        "title": "Galera · все 3 узла готовы",
         "type": "stat",
         "datasource": {
           "type": "prometheus",
@@ -75,7 +75,7 @@
         "targets": [
           {
             "refId": "A",
-            "expr": "(min(mysql_up{job=\"mariadb\"}) or vector(0)) * (min(up{job=\"mariadb\"}) or vector(0))",
+            "expr": "(count((mysql_up{job=\"mariadb\"} == 1) and (up{job=\"mariadb\"} == 1) and (mysql_global_status_wsrep_ready{job=\"mariadb\"} == 1) and (mysql_global_status_wsrep_connected{job=\"mariadb\"} == 1) and (mysql_global_status_wsrep_local_state{job=\"mariadb\"} == 4) and (mysql_global_status_wsrep_cluster_size{job=\"mariadb\",instance=~\"mysqld-exporter(-[23])?:9104\"} == 3)) or vector(0)) == bool 3",
             "datasource": {
               "type": "prometheus",
               "uid": "safeboard-prometheus"
@@ -181,7 +181,7 @@
       },
       {
         "id": 3,
-        "title": "Сбор метрик · 6 целей",
+        "title": "Сбор метрик · 9 целей",
         "type": "stat",
         "datasource": {
           "type": "prometheus",
@@ -237,7 +237,7 @@
         "targets": [
           {
             "refId": "A",
-            "expr": "count(up == 1) == bool 6",
+            "expr": "count(up == 1) == bool 9",
             "datasource": {
               "type": "prometheus",
               "uid": "safeboard-prometheus"
@@ -492,7 +492,7 @@
         "targets": [
           {
             "refId": "A",
-            "expr": "rate(container_cpu_usage_seconds_total{job=\"cadvisor\",container_label_com_docker_compose_project=\"safeboard-app\"}[$__rate_interval])",
+            "expr": "max by (container_label_com_docker_compose_service) (rate(container_cpu_usage_seconds_total{job=\"cadvisor\",container_label_com_docker_compose_project=\"safeboard-app\"}[$__rate_interval]) and topk by (container_label_com_docker_compose_service) (1, timestamp(container_cpu_usage_seconds_total{job=\"cadvisor\",container_label_com_docker_compose_project=\"safeboard-app\"}) > time() - 30))",
             "datasource": {
               "type": "prometheus",
               "uid": "safeboard-prometheus"
@@ -544,7 +544,7 @@
         "targets": [
           {
             "refId": "A",
-            "expr": "container_memory_working_set_bytes{job=\"cadvisor\",container_label_com_docker_compose_project=\"safeboard-app\"}",
+            "expr": "max by (container_label_com_docker_compose_service) (container_memory_working_set_bytes{job=\"cadvisor\",container_label_com_docker_compose_project=\"safeboard-app\"} and topk by (container_label_com_docker_compose_service) (1, timestamp(container_memory_working_set_bytes{job=\"cadvisor\",container_label_com_docker_compose_project=\"safeboard-app\"}) > time() - 30))",
             "datasource": {
               "type": "prometheus",
               "uid": "safeboard-prometheus"
@@ -774,6 +774,298 @@
             "mode": "multi",
             "sort": "desc"
           }
+        }
+      },
+      {
+        "id": 14,
+        "title": "Узлы MariaDB",
+        "type": "stat",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 32,
+          "w": 12,
+          "h": 5
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "color": {
+              "mode": "thresholds"
+            },
+            "noValue": "Нет данных",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            },
+            "mappings": [
+              {
+                "type": "value",
+                "options": {
+                  "0": {
+                    "text": "Нет подключения",
+                    "color": "red",
+                    "index": 0
+                  },
+                  "1": {
+                    "text": "Подключено",
+                    "color": "green",
+                    "index": 1
+                  }
+                }
+              }
+            ]
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "mysql_up{job=\"mariadb\"}",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{instance}}",
+            "range": false,
+            "instant": true
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 15,
+        "title": "Galera · размер компонента",
+        "type": "stat",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 32,
+          "w": 12,
+          "h": 5
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "color": {
+              "mode": "thresholds"
+            },
+            "noValue": "Нет данных",
+            "min": 0,
+            "max": 3,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 3
+                },
+                {
+                  "color": "red",
+                  "value": 4
+                }
+              ]
+            },
+            "mappings": []
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "mysql_global_status_wsrep_cluster_size{job=\"mariadb\"}",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{instance}}",
+            "range": false,
+            "instant": true
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 16,
+        "title": "Galera · Synced = 4",
+        "type": "stat",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 37,
+          "w": 12,
+          "h": 5
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "color": {
+              "mode": "thresholds"
+            },
+            "noValue": "Нет данных",
+            "min": 0,
+            "max": 4,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 4
+                },
+                {
+                  "color": "red",
+                  "value": 5
+                }
+              ]
+            },
+            "mappings": []
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "mysql_global_status_wsrep_local_state{job=\"mariadb\"}",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{instance}}",
+            "range": false,
+            "instant": true
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 17,
+        "title": "HAProxy · доступность БД",
+        "type": "stat",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "safeboard-prometheus"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 37,
+          "w": 12,
+          "h": 5
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "color": {
+              "mode": "thresholds"
+            },
+            "noValue": "Нет данных",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            },
+            "mappings": []
+          },
+          "overrides": []
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "probe_success{job=\"haproxy\"}",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "safeboard-prometheus"
+            },
+            "legendFormat": "{{instance}}",
+            "range": false,
+            "instant": true
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "auto"
         }
       }
     ],

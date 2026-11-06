@@ -24,7 +24,7 @@ class ValidatorTests(unittest.TestCase):
         self.validator.deadline = time.monotonic() + 1
         self.dashboard = json.loads((Path(__file__).resolve().parents[1] / 'config/grafana/dashboard.json').read_text())['dashboard']
 
-    def test_targets_reject_replacement_even_with_six_healthy_targets(self):
+    def test_targets_reject_replacement_even_with_expected_number_of_healthy_targets(self):
         targets = [{'labels': {'job': j, 'instance': i}, 'health': 'up'}
                    for j, i in sorted(module.EXPECTED_TARGETS)]
         targets[0]['labels'] = {'job': 'unrelated', 'instance': 'other:1234'}
@@ -33,9 +33,13 @@ class ValidatorTests(unittest.TestCase):
             self.validator.check_targets()
 
     def metric_query(self, expression):
-        value = time.time() if expression.startswith('timestamp(') else 1
+        value = time.time() if 'timestamp(' in expression else 1
         if 'container_' in expression:
             return [row(value, **{module.SERVICE_LABEL: s}) for s in module.SERVICES]
+        if 'mysql_' in expression and not expression.startswith(('(min(', '(count(')):
+            if not 'timestamp(' in expression:
+                value = 3 if 'wsrep_cluster_size' in expression else 4 if 'wsrep_local_state' in expression else 1
+            return [row(value, instance=i) for j, i in module.EXPECTED_TARGETS if j == 'mariadb']
         return [row(value)]
 
     def test_stale_raw_samples_rejected(self):
@@ -48,8 +52,14 @@ class ValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(module.ValidationError, 'service unavailable.*mysql_up'):
             self.validator.check_metrics()
 
+    def test_two_node_component_cannot_pass_full_cluster_validation(self):
+        self.validator.query = Mock(side_effect=lambda e: [row(2, instance=i) for j, i in module.EXPECTED_TARGETS if j == 'mariadb']
+                                    if e == 'mysql_global_status_wsrep_cluster_size{job="mariadb"}' else self.metric_query(e))
+        with self.assertRaisesRegex(module.ValidationError, 'Galera wsrep_cluster_size'):
+            self.validator.check_metrics()
+
     def test_missing_one_container_rejected(self):
-        self.validator.query = Mock(side_effect=lambda e: [row(time.time(), **{module.SERVICE_LABEL: 'mariadb'})]
+        self.validator.query = Mock(side_effect=lambda e: [row(time.time(), **{module.SERVICE_LABEL: s}) for s in module.SERVICES - {'uptime-kuma'}]
                                     if 'container_cpu_' in e else self.metric_query(e))
         with self.assertRaisesRegex(module.ValidationError, 'missing container series: uptime-kuma'):
             self.validator.check_metrics()
@@ -58,7 +68,7 @@ class ValidatorTests(unittest.TestCase):
         self.validator.get = Mock(return_value={'dashboard': self.dashboard})
         self.validator.query = Mock(side_effect=self.metric_query)
         self.validator.check_panels()
-        self.assertEqual(self.validator.query.call_count, 13)
+        self.assertEqual(self.validator.query.call_count, 17)
         expressions = [c.args[0] for c in self.validator.query.call_args_list]
         self.assertTrue(any('[1m]' in e for e in expressions))
         self.assertTrue(all('$' not in e for e in expressions))

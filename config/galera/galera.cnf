@@ -1,0 +1,13 @@
+[mariadb]
+bind-address=0.0.0.0
+binlog_format=ROW
+default_storage_engine=InnoDB
+innodb_autoinc_lock_mode=2
+wsrep_on=ON
+wsrep_provider=/usr/lib/galera/libgalera_smm.so
+wsrep_cluster_name=safeboard
+wsrep_cluster_address=gcomm://mariadb,mariadb-2,mariadb-3
+wsrep_sst_method=rsync
+wsrep_provider_options=gcache.size=128M;gcache.recover=yes
+# Causal reads also protect reads immediately after a failover.
+wsrep_sync_wait=1

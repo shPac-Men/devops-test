@@ -19,10 +19,13 @@ EXPECTED_TARGETS = {
     ('node', 'node-exporter:9100'),
     ('cadvisor', 'cadvisor:8080'),
     ('mariadb', 'mysqld-exporter:9104'),
+    ('mariadb', 'mysqld-exporter-2:9104'),
+    ('mariadb', 'mysqld-exporter-3:9104'),
+    ('haproxy', 'http://haproxy:8404/health'),
     ('blackbox', 'blackbox-exporter:9115'),
     ('kuma-http', 'http://uptime-kuma:3001/'),
 }
-SERVICES = {'mariadb', 'uptime-kuma'}
+SERVICES = {'mariadb', 'mariadb-2', 'mariadb-3', 'haproxy', 'uptime-kuma'}
 SERVICE_LABEL = 'container_label_com_docker_compose_service'
 APP = 'job="cadvisor",container_label_com_docker_compose_project="safeboard-app"'
 # Check raw sample timestamps: computed PromQL values have evaluation timestamps,
@@ -110,28 +113,38 @@ class Validator:
                 raise ValidationError(f'Prometheus target {key[0]}/{key[1]} is not UP')
         rows = self.query('up')
         keys = {(r['metric'].get('job'), r['metric'].get('instance')) for r in rows}
-        if keys != EXPECTED_TARGETS or len(rows) != 6 or any(float(r['value'][1]) != 1 for r in rows):
-            raise ValidationError('expected six scraped up=1 series')
+        if keys != EXPECTED_TARGETS or len(rows) != len(EXPECTED_TARGETS) or any(float(r['value'][1]) != 1 for r in rows):
+            raise ValidationError('expected nine scraped up=1 series')
 
     def check_metrics(self):
         for label, expression, containers in RAW_METRICS:
-            rows = self.query(f'timestamp({expression})')
+            stamp_query = f'timestamp({expression})'
+            if containers:
+                # cAdvisor retains stopped container incarnations briefly.
+                # Require a fresh sample for every service using its newest incarnation.
+                stamp_query = f'max by ({SERVICE_LABEL}) ({stamp_query})'
+            rows = self.query(stamp_query)
             now = time.time()
             if any(not 0 <= now - float(row['value'][1]) <= 30 for row in rows):
                 raise ValidationError(f'{label}: raw samples must be no older than 30 seconds')
             if containers:
                 require_services(rows, label)
-        for expression in ('mysql_up{job="mariadb"}', 'probe_success{job="kuma-http"}'):
+        for metric, expected in [('wsrep_cluster_size', 3), ('wsrep_local_state', 4), ('wsrep_connected', 1), ('wsrep_ready', 1)]:
+            rows = self.query('mysql_global_status_' + metric + '{job="mariadb"}')
+            stamps = self.query('timestamp(mysql_global_status_' + metric + '{job="mariadb"})')
+            if len(rows) != 3 or any(float(r['value'][1]) != expected for r in rows) or len(stamps) != 3 or any(not 0 <= time.time() - float(r['value'][1]) <= 30 for r in stamps):
+                raise ValidationError(f'Galera {metric}: expected three fresh values = {expected}')
+        for expression in ('mysql_up{job="mariadb"}', 'probe_success{job="kuma-http"}', 'probe_success{job="haproxy"}'):
             rows = self.query(expression)
-            if len(rows) != 1 or float(rows[0]['value'][1]) != 1:
+            if len(rows) != (3 if 'mysql_up' in expression else 1) or any(float(r['value'][1]) != 1 for r in rows):
                 raise ValidationError(f'service unavailable: expected {expression}=1')
 
     def check_panels(self):
         dashboard = self.get('/api/dashboards/uid/safeboard-health')['dashboard']
         panels = dashboard['panels']
         ids = [p['id'] for p in panels]
-        if len(ids) != 13 or set(ids) != set(range(1, 14)):
-            raise ValidationError('saved dashboard must contain the 13 expected panels')
+        if len(ids) != 17 or set(ids) != set(range(1, 18)):
+            raise ValidationError('saved dashboard must contain the 17 expected panels')
         for panel in panels:
             label = f'panel {panel["id"]} ({panel["title"]})'
             targets = [t for t in panel.get('targets', []) if not t.get('hide')]
@@ -175,7 +188,7 @@ class Validator:
                 try:
                     self.check()
                     self.remaining()
-                    print('PASS: six expected targets UP; fresh service/resource metrics; all 13 saved Grafana panels have valid data', flush=True)
+                    print('PASS: nine expected targets UP; fresh service/resource metrics; all 17 saved Grafana panels have valid data', flush=True)
                     return
                 except ValidationError as error:
                     reason = str(error)

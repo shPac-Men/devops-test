@@ -1,9 +1,10 @@
 name: safeboard-app
 
 services:
-  mariadb:
+  mariadb: &galera
     image: mariadb:11.4.13
     restart: unless-stopped
+    entrypoint: ["/bin/bash", "/opt/galera/entrypoint.sh"]
     environment:
       MARIADB_DATABASE: uptime_kuma
       MARIADB_USER: uptime_kuma
@@ -15,23 +16,50 @@ services:
       - mariadb_root_password
     volumes:
       - mariadb_data:/var/lib/mysql
+      - ./config/galera:/opt/galera:ro
+      - ./config/galera/galera.cnf:/etc/mysql/conf.d/galera.cnf:ro
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
+      test: ["CMD", "/opt/galera/healthy.sh"]
+      interval: 5s
       timeout: 5s
-      retries: 12
+      retries: 60
       start_period: 60s
+
+  mariadb-2:
+    <<: *galera
+    volumes:
+      - mariadb_2_data:/var/lib/mysql
+      - ./config/galera:/opt/galera:ro
+      - ./config/galera/galera.cnf:/etc/mysql/conf.d/galera.cnf:ro
+
+  mariadb-3:
+    <<: *galera
+    volumes:
+      - mariadb_3_data:/var/lib/mysql
+      - ./config/galera:/opt/galera:ro
+      - ./config/galera/galera.cnf:/etc/mysql/conf.d/galera.cnf:ro
+
+  haproxy:
+    image: haproxy:3.2.26-alpine
+    restart: unless-stopped
+    volumes:
+      - ./config/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8404/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 
   uptime-kuma:
     image: louislam/uptime-kuma:2.5.9
     restart: unless-stopped
     depends_on:
-      mariadb:
+      haproxy:
         condition: service_healthy
         restart: true
     environment:
       UPTIME_KUMA_DB_TYPE: mariadb
-      UPTIME_KUMA_DB_HOSTNAME: mariadb
+      UPTIME_KUMA_DB_HOSTNAME: haproxy
       UPTIME_KUMA_DB_PORT: "3306"
       UPTIME_KUMA_DB_NAME: uptime_kuma
       UPTIME_KUMA_DB_USERNAME: uptime_kuma
@@ -61,4 +89,6 @@ secrets:
 
 volumes:
   mariadb_data:
+  mariadb_2_data:
+  mariadb_3_data:
   kuma_data:

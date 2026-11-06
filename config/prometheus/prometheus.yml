@@ -15,7 +15,7 @@ scrape_configs:
       - targets: ["cadvisor:8080"]
   - job_name: mariadb
     static_configs:
-      - targets: ["mysqld-exporter:9104"]
+      - targets: ["mysqld-exporter:9104", "mysqld-exporter-2:9104", "mysqld-exporter-3:9104"]
   - job_name: blackbox
     static_configs:
       - targets: ["blackbox-exporter:9115"]
@@ -25,6 +25,19 @@ scrape_configs:
       module: [http_2xx]
     static_configs:
       - targets: ["http://uptime-kuma:3001/"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+  - job_name: haproxy
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ["http://haproxy:8404/health"]
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
